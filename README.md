@@ -27,6 +27,15 @@ RFID Sorter Assessment is a single-file PHP application backed by SQLite that he
    - Username: `admin`
    - Password: `admin`
 
+### Accessing the Response Form
+Once you are authenticated, the navigation bar at the top of the interface reveals the survey tooling:
+
+1. Click **“Respostas”** in the navigation bar to open the list of saved survey entries.
+2. Use the **“Nova resposta”** button to launch the multi-section response form seeded by the application.
+3. Complete the questions in each section, attach any supporting files if needed, and click **Salvar** to store the response.
+
+Returning to the **Respostas** screen lets you reopen or review previously submitted surveys at any time.
+
 When the application runs for the first time it automatically creates `data.db` (SQLite database), seeds baseline survey sections/questions, and ensures the admin user exists.
 
 ### Database Location
