@@ -60,6 +60,7 @@ function migrate(PDO $pdo): void {
             title TEXT NOT NULL,
             client_name TEXT,
             site_location TEXT,
+            submitter_email TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
@@ -86,6 +87,16 @@ function migrate(PDO $pdo): void {
             FOREIGN KEY(response_id) REFERENCES responses(id) ON DELETE CASCADE
         );
     ");
+
+    // Ensure responses.submitter_email exists for legacy databases
+    $cols = $pdo->query("PRAGMA table_info(responses)")->fetchAll(PDO::FETCH_ASSOC);
+    $hasSubmitter = false;
+    foreach ($cols as $col) {
+        if (($col['name'] ?? '') === 'submitter_email') { $hasSubmitter = true; break; }
+    }
+    if (!$hasSubmitter) {
+        $pdo->exec('ALTER TABLE responses ADD COLUMN submitter_email TEXT');
+    }
 
     // Seed admin user
     $has = (int)$pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
@@ -162,6 +173,24 @@ function revokeGuestAccess(): void {
     unset($_SESSION['guest_email']);
 }
 
+function requireAnyAccess(): void {
+    if (currentUser() || guestEmail()) return;
+    redirect('?action=guest_access');
+}
+
+function actorSubmitterEmail(?array $existingResponse = null): ?string {
+    $guest = guestEmail();
+    if ($guest) return $guest;
+    $user = currentUser();
+    if ($user) {
+        if ($existingResponse && !empty($existingResponse['submitter_email'])) {
+            return $existingResponse['submitter_email'];
+        }
+        return 'staff:' . ($user['username'] ?? 'usuario');
+    }
+    return $existingResponse['submitter_email'] ?? null;
+}
+
 // ---------- Routing ----------
 $action = $_GET['action'] ?? 'home';
 $pdo = db();
@@ -198,6 +227,355 @@ function getResponseValues(PDO $pdo, int $id): array {
     $st->execute([$id]); $map=[];
     foreach($st->fetchAll(PDO::FETCH_ASSOC) as $r) $map[$r['key_name']]=$r['value'];
     return $map;
+}
+
+function fetchSurveyStructure(PDO $pdo): array {
+    $sections = $pdo->query("SELECT id, name FROM sections ORDER BY sort_order, id")
+        ->fetchAll(PDO::FETCH_ASSOC);
+    $stmtQ = $pdo->prepare("SELECT * FROM questions WHERE section_id=? ORDER BY sort_order, id");
+    foreach ($sections as &$section) {
+        $stmtQ->execute([$section['id']]);
+        $section['questions'] = $stmtQ->fetchAll(PDO::FETCH_ASSOC);
+    }
+    unset($section);
+    return $sections;
+}
+
+function getAttachments(PDO $pdo, int $responseId): array {
+    $st = $pdo->prepare("SELECT id, filename, original_name, uploaded_at FROM attachments WHERE response_id=? ORDER BY datetime(uploaded_at) DESC, id DESC");
+    $st->execute([$responseId]);
+    return $st->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function ensureResponseAccess(PDO $pdo, int $id): array {
+    $response = getResponse($pdo, $id);
+    if (!$response) {
+        setFlash('Resposta não encontrada.');
+        redirect('?action=list_responses');
+    }
+    $user = currentUser();
+    if (!$user) {
+        $guest = guestEmail();
+        if (!$guest || $response['submitter_email'] !== $guest) {
+            setFlash('Acesso não autorizado.');
+            redirect('?action=list_responses');
+        }
+    }
+    return $response;
+}
+
+// ---------- Response Pages ----------
+function page_list_responses(PDO $pdo): void {
+    requireAnyAccess();
+    $user = currentUser();
+    $guest = guestEmail();
+    $sql = "SELECT id,title,client_name,site_location,submitter_email,created_at,updated_at FROM responses";
+    $params = [];
+    if (!$user && $guest) {
+        $sql .= " WHERE submitter_email = ?";
+        $params[] = $guest;
+    }
+    $sql .= " ORDER BY datetime(updated_at) DESC, id DESC";
+    $st = $pdo->prepare($sql);
+    $st->execute($params);
+    $responses = $st->fetchAll(PDO::FETCH_ASSOC);
+    $flash = popFlash();
+
+    ob_start(); ?>
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h1 class="h4 mb-0">Respostas</h1>
+      <a class="btn btn-primary" href="?action=new_response">Nova resposta</a>
+    </div>
+    <?php if($flash): ?><div class="alert alert-success"><?=h($flash)?></div><?php endif; ?>
+    <div class="bg-white p-3 rounded shadow-sm">
+      <?php if(empty($responses)): ?>
+        <p class="mb-0 text-muted">Nenhuma resposta encontrada.</p>
+      <?php else: ?>
+      <div class="table-responsive">
+        <table class="table table-striped align-middle">
+          <thead><tr><th>ID</th><th>Título</th><th>Cliente</th><th>Local</th><th>E-mail</th><th>Atualizado</th><th class="text-end">Ações</th></tr></thead>
+          <tbody>
+          <?php foreach($responses as $response): ?>
+            <tr>
+              <td><?=$response['id']?></td>
+              <td><?=h($response['title'])?></td>
+              <td><?=h($response['client_name'])?></td>
+              <td><?=h($response['site_location'])?></td>
+              <td><?=h($response['submitter_email'])?></td>
+              <td><?=h($response['updated_at'])?></td>
+              <td class="text-end">
+                <a class="btn btn-sm btn-outline-secondary" href="?action=view_response&amp;id=<?=$response['id']?>">Detalhes</a>
+                <a class="btn btn-sm btn-outline-primary" href="?action=edit_response&amp;id=<?=$response['id']?>">Editar</a>
+                <?php if($user): ?>
+                <form method="post" action="?action=delete_response" class="d-inline" onsubmit="return confirm('Excluir resposta #<?=$response['id']?>?');">
+                  <input type="hidden" name="id" value="<?=$response['id']?>">
+                  <button class="btn btn-sm btn-outline-danger">Excluir</button>
+                </form>
+                <?php endif; ?>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+      <?php endif; ?>
+    </div>
+    <?php layout(ob_get_clean(), "Respostas – ".APP_TITLE);
+}
+
+function page_response_form(PDO $pdo, ?array $response = null, array $old = [], array $errors = []): void {
+    requireAnyAccess();
+    $structure = fetchSurveyStructure($pdo);
+    $isEdit = $response !== null;
+    $values = $old['values'] ?? ($response ? getResponseValues($pdo, (int)$response['id']) : []);
+    $title = $old['title'] ?? ($response['title'] ?? '');
+    $client = $old['client_name'] ?? ($response['client_name'] ?? '');
+    $site = $old['site_location'] ?? ($response['site_location'] ?? '');
+    $formTitle = $isEdit ? 'Editar resposta' : 'Nova resposta';
+
+    ob_start(); ?>
+    <div class="bg-white p-4 rounded shadow-sm">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h4 mb-0"><?=h($formTitle)?></h1>
+        <a class="btn btn-outline-secondary" href="?action=list_responses">Voltar</a>
+      </div>
+      <?php if($errors): ?>
+        <div class="alert alert-danger">
+          <ul class="mb-0">
+            <?php foreach($errors as $error): ?><li><?=h($error)?></li><?php endforeach; ?>
+          </ul>
+        </div>
+      <?php endif; ?>
+      <form method="post" action="?action=save_response">
+        <?php if($isEdit): ?><input type="hidden" name="id" value="<?=$response['id']?>"><?php endif; ?>
+        <div class="mb-3">
+          <label class="form-label">Título <span class="text-danger">*</span></label>
+          <input class="form-control" name="title" value="<?=h($title)?>" required>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Cliente</label>
+            <input class="form-control" name="client_name" value="<?=h($client)?>">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Site / Local</label>
+            <input class="form-control" name="site_location" value="<?=h($site)?>">
+          </div>
+        </div>
+        <?php foreach($structure as $section): ?>
+          <div class="mt-4">
+            <h2 class="h5"><?=h($section['name'])?></h2>
+            <div class="row g-3">
+              <?php foreach($section['questions'] as $question): ?>
+                <div class="col-12">
+                  <?php $field = $question['key_name']; $value = $values[$field] ?? ''; $required = (int)$question['required'] === 1; ?>
+                  <label class="form-label"><?=h($question['label'])?><?=$required ? ' <span class="text-danger">*</span>' : ''?></label>
+                  <?php
+                    $type = $question['type'];
+                    $inputName = "q[".$field."]";
+                    $attrs = $required ? ' required' : '';
+                    if ($type === 'textarea') {
+                        ?>
+                        <div class="input-group">
+                          <textarea class="form-control" name="<?=$inputName?>" rows="3"<?=$attrs?>><?=h($value)?></textarea>
+                          <button type="button" class="btn btn-outline-secondary" onclick="fetchAiSuggestion('<?=h($question['label'])?>', this)">Sugerir IA</button>
+                        </div>
+                        <?php
+                    } elseif ($type === 'select') {
+                        $options = array_filter(array_map('trim', preg_split('/[\n,]+/', (string)$question['options'])));
+                        ?>
+                        <select class="form-select" name="<?=$inputName?>"<?=$attrs?>>
+                          <option value="">Selecione...</option>
+                          <?php foreach($options as $option): ?>
+                            <option value="<?=h($option)?>" <?=$option === $value ? 'selected' : ''?>><?=h($option)?></option>
+                          <?php endforeach; ?>
+                        </select>
+                        <?php
+                    } else {
+                        $inputType = in_array($type, ['number','date']) ? $type : 'text';
+                        ?>
+                        <div class="input-group">
+                          <input type="<?=$inputType?>" class="form-control" name="<?=$inputName?>" value="<?=h($value)?>"<?=$attrs?><?= $inputType==='number' ? ' step="any"' : '' ?>>
+                          <button type="button" class="btn btn-outline-secondary" onclick="fetchAiSuggestion('<?=h($question['label'])?>', this)">Sugerir IA</button>
+                        </div>
+                        <?php
+                    }
+                  ?>
+                </div>
+              <?php endforeach; ?>
+            </div>
+          </div>
+        <?php endforeach; ?>
+        <div class="d-flex justify-content-end mt-4">
+          <button class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+    <?php layout(ob_get_clean(), ($formTitle . ' – ' . APP_TITLE));
+}
+
+function handle_save_response(PDO $pdo): void {
+    requireAnyAccess();
+    $id = isset($_POST['id']) ? (int)$_POST['id'] : null;
+    $existing = $id ? ensureResponseAccess($pdo, $id) : null;
+    $structure = fetchSurveyStructure($pdo);
+
+    $title = trim((string)($_POST['title'] ?? ''));
+    $client = trim((string)($_POST['client_name'] ?? ''));
+    $site = trim((string)($_POST['site_location'] ?? ''));
+    $valuesInput = $_POST['q'] ?? [];
+    if (!is_array($valuesInput)) $valuesInput = [];
+
+    $errors = [];
+    if ($title === '') {
+        $errors[] = 'O campo título é obrigatório.';
+    }
+
+    foreach ($structure as $section) {
+        foreach ($section['questions'] as $question) {
+            if ((int)$question['required'] === 1) {
+                $field = $question['key_name'];
+                $value = $valuesInput[$field] ?? '';
+                if (is_array($value)) $value = implode(',', $value);
+                if (trim((string)$value) === '') {
+                    $errors[] = 'A pergunta "' . $question['label'] . '" é obrigatória.';
+                }
+            }
+        }
+    }
+
+    if ($errors) {
+        $old = [
+            'title' => $title,
+            'client_name' => $client,
+            'site_location' => $site,
+            'values' => array_map(static fn($v) => is_array($v) ? implode(',', $v) : (string)$v, $valuesInput)
+        ];
+        page_response_form($pdo, $existing, $old, $errors);
+        return;
+    }
+
+    $submitterEmail = actorSubmitterEmail($existing);
+    $now = nowIso();
+
+    $pdo->beginTransaction();
+    try {
+        if ($existing) {
+            $stmt = $pdo->prepare("UPDATE responses SET title=?, client_name=?, site_location=?, submitter_email=?, updated_at=? WHERE id=?");
+            $stmt->execute([
+                $title,
+                $client !== '' ? $client : null,
+                $site !== '' ? $site : null,
+                $submitterEmail,
+                $now,
+                $existing['id']
+            ]);
+            $pdo->prepare("DELETE FROM response_values WHERE response_id=?")->execute([$existing['id']]);
+            $responseId = (int)$existing['id'];
+        } else {
+            $stmt = $pdo->prepare("INSERT INTO responses (title, client_name, site_location, submitter_email, created_at, updated_at) VALUES (?,?,?,?,?,?)");
+            $stmt->execute([
+                $title,
+                $client !== '' ? $client : null,
+                $site !== '' ? $site : null,
+                $submitterEmail,
+                $now,
+                $now
+            ]);
+            $responseId = (int)$pdo->lastInsertId();
+        }
+
+        $stmtValue = $pdo->prepare("INSERT INTO response_values (response_id, question_id, value) VALUES (?,?,?)");
+        foreach ($structure as $section) {
+            foreach ($section['questions'] as $question) {
+                $field = $question['key_name'];
+                $value = $valuesInput[$field] ?? '';
+                if (is_array($value)) $value = implode(',', $value);
+                $stmtValue->execute([$responseId, $question['id'], $value]);
+            }
+        }
+
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+
+    setFlash($existing ? 'Resposta atualizada com sucesso.' : 'Resposta criada com sucesso.');
+    redirect('?action=view_response&id=' . $responseId);
+}
+
+function page_view_response(PDO $pdo, int $id): void {
+    requireAnyAccess();
+    $response = ensureResponseAccess($pdo, $id);
+    $values = getResponseValues($pdo, $id);
+    $structure = fetchSurveyStructure($pdo);
+    $attachments = getAttachments($pdo, $id);
+    $flash = popFlash();
+
+    ob_start(); ?>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h1 class="h4 mb-1">Resposta #<?=$response['id']?></h1>
+        <div class="text-muted small">Atualizado em <?=$response['updated_at']?> | Criado em <?=$response['created_at']?></div>
+      </div>
+      <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="?action=list_responses">Voltar</a>
+        <a class="btn btn-primary" href="?action=edit_response&amp;id=<?=$response['id']?>">Editar</a>
+      </div>
+    </div>
+    <?php if($flash): ?><div class="alert alert-success"><?=h($flash)?></div><?php endif; ?>
+    <div class="bg-white p-4 rounded shadow-sm mb-4">
+      <dl class="row mb-0">
+        <dt class="col-sm-3">Título</dt><dd class="col-sm-9"><?=h($response['title'])?></dd>
+        <dt class="col-sm-3">Cliente</dt><dd class="col-sm-9"><?=h($response['client_name'])?></dd>
+        <dt class="col-sm-3">Site</dt><dd class="col-sm-9"><?=h($response['site_location'])?></dd>
+        <dt class="col-sm-3">Contato</dt><dd class="col-sm-9"><?=h($response['submitter_email'])?></dd>
+      </dl>
+    </div>
+    <?php foreach($structure as $section): ?>
+      <div class="bg-white p-4 rounded shadow-sm mb-4">
+        <h2 class="h5 mb-3"><?=h($section['name'])?></h2>
+        <dl class="row mb-0">
+          <?php foreach($section['questions'] as $question):
+              $field=$question['key_name'];
+              $rawValue=(string)($values[$field] ?? '');
+              $display=trim($rawValue) === '' ? '<span class="text-muted">Sem resposta</span>' : nl2br(h($rawValue));
+          ?>
+            <dt class="col-sm-4 col-lg-3"><?=h($question['label'])?></dt>
+            <dd class="col-sm-8 col-lg-9"><?=$display?></dd>
+          <?php endforeach; ?>
+        </dl>
+      </div>
+    <?php endforeach; ?>
+
+    <div class="bg-white p-4 rounded shadow-sm">
+      <h2 class="h5 mb-3">Anexos</h2>
+      <?php if(empty($attachments)): ?>
+        <p class="text-muted">Nenhum anexo enviado.</p>
+      <?php else: ?>
+        <ul class="list-group mb-3">
+          <?php foreach($attachments as $att): ?>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <div>
+                <a href="uploads/<?=h($att['filename'])?>" target="_blank"><?=h($att['original_name'])?></a>
+                <div class="small text-muted">Enviado em <?=$att['uploaded_at']?></div>
+              </div>
+            </li>
+          <?php endforeach; ?>
+        </ul>
+      <?php endif; ?>
+      <?php if(currentUser()): ?>
+      <form method="post" action="?action=upload_attachment" enctype="multipart/form-data" class="d-flex gap-2">
+        <input type="hidden" name="response_id" value="<?=$response['id']?>">
+        <input type="file" name="file" class="form-control" required>
+        <button class="btn btn-outline-primary">Enviar</button>
+      </form>
+      <?php else: ?>
+        <p class="small text-muted mb-0">Somente usuários autenticados podem enviar anexos.</p>
+      <?php endif; ?>
+    </div>
+    <?php layout(ob_get_clean(), 'Resposta #' . $response['id'] . ' – ' . APP_TITLE);
 }
 
 // ---------- Upload ----------
@@ -237,10 +615,17 @@ function page_reports(PDO $pdo): void {
     </form>
     <div class="bg-white p-3 rounded shadow-sm">
       <table class="table table-sm">
-        <thead><tr><th>ID</th><th>Título</th><th>Cliente</th><th>Local</th><th>Criado</th></tr></thead>
+        <thead><tr><th>ID</th><th>Título</th><th>Cliente</th><th>Local</th><th>E-mail</th><th>Criado</th></tr></thead>
         <tbody>
         <?php foreach($rows as $r): ?>
-          <tr><td><?=$r['id']?></td><td><?=h($r['title'])?></td><td><?=h($r['client_name'])?></td><td><?=h($r['site_location'])?></td><td><?=$r['created_at']?></td></tr>
+          <tr>
+            <td><?=$r['id']?></td>
+            <td><?=h($r['title'])?></td>
+            <td><?=h($r['client_name'])?></td>
+            <td><?=h($r['site_location'])?></td>
+            <td><?=h($r['submitter_email'])?></td>
+            <td><?=$r['created_at']?></td>
+          </tr>
         <?php endforeach;?>
         </tbody>
       </table>
@@ -338,22 +723,14 @@ function layout(string $content,string $title=APP_TITLE):void{
     <link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'></head><body>
     <nav class='navbar navbar-dark bg-dark navbar-expand'><div class='container'>
       <a class='navbar-brand' href='?'>".APP_TITLE."</a>
-      <div class='navbar-nav'>";
-    if($u || $guest){
-        echo "<a class='nav-link' href='?action=list_responses'>Respostas</a>";
-        echo "<a class='nav-link' href='?action=reports'>Relatórios</a>";
-    } else {
-        echo "<a class='nav-link' href='?action=guest_access'>Responder levantamento</a>";
-    }
-    if($u){
-        echo "<a class='nav-link' href='?action=users'>Usuários</a>";
-        echo "<a class='nav-link' href='?action=logout'>Logout (".h($u['username']).")</a>";
-    } elseif($guest){
-        echo "<span class='navbar-text text-light small ms-3'>Convidado: ".h($guest)."</span>";
-        echo "<a class='nav-link' href='?action=guest_logout'>Sair</a>";
-    } else {
-        echo "<a class='nav-link' href='?action=login'>Login</a>";
-    }
+
+      <div class='navbar-nav'>
+        <a class='nav-link' href='?action=list_responses'>Respostas</a>
+        <a class='nav-link' href='?action=reports'>Relatórios</a>";
+    if($u){ echo "<a class='nav-link' href='?action=users'>Usuários</a>"; echo "<a class='nav-link' href='?action=logout'>Logout (".h($u['username']).")</a>"; }
+    elseif(($guest = guestEmail())) { echo "<span class='nav-link disabled text-white-50'>Convidado: ".h($guest)."</span>"; echo "<a class='nav-link' href='?action=guest_logout'>Sair</a>"; }
+    else { echo "<a class='nav-link' href='?action=login'>Login</a>"; }
+
     echo "</div></div></nav><main class='container py-4'>{$content}</main>
     <script>
     async function fetchAiSuggestion(prompt, btn){
@@ -431,7 +808,44 @@ function page_guest_access(string $error = '', string $email = ''): void { ob_st
 <?php layout(ob_get_clean(),"Acesso de convidado – ".APP_TITLE); }
 
 // ---------- Dispatch ----------
-if($action==='login' && $_SERVER['REQUEST_METHOD']==='POST'){
+if($action==='save_response' && $_SERVER['REQUEST_METHOD']==='POST'){
+    handle_save_response($pdo);
+}
+elseif($action==='new_response'){
+    page_response_form($pdo);
+}
+elseif($action==='edit_response'){
+    requireAnyAccess();
+    $id=(int)($_GET['id'] ?? 0);
+    $response=ensureResponseAccess($pdo, $id);
+    $old=[
+        'title'=>$response['title'] ?? '',
+        'client_name'=>$response['client_name'] ?? '',
+        'site_location'=>$response['site_location'] ?? '',
+        'values'=>getResponseValues($pdo, $response['id'])
+    ];
+    page_response_form($pdo,$response,$old);
+}
+elseif($action==='view_response'){
+    $id=(int)($_GET['id'] ?? 0);
+    page_view_response($pdo,$id);
+}
+elseif($action==='delete_response' && $_SERVER['REQUEST_METHOD']==='POST'){
+    requireLogin();
+    $id=(int)$_POST['id'];
+    $exists=getResponse($pdo,$id);
+    if($exists){
+        $pdo->prepare("DELETE FROM responses WHERE id=?")->execute([$id]);
+        setFlash('Resposta excluída.');
+    } else {
+        setFlash('Resposta não encontrada.');
+    }
+    redirect('?action=list_responses');
+}
+elseif($action==='list_responses'){
+    page_list_responses($pdo);
+}
+elseif($action==='login' && $_SERVER['REQUEST_METHOD']==='POST'){
     $u=$_POST['username']; $p=$_POST['password'];
     $st=$pdo->prepare("SELECT * FROM users WHERE username=?");$st->execute([$u]);$usr=$st->fetch();
     if($usr && password_verify($p,$usr['password_hash'])){$_SESSION['uid']=$usr['id'];redirect("?");}
