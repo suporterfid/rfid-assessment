@@ -750,9 +750,14 @@ function layout(string $content,string $title=APP_TITLE):void{
         const res = await fetch('ai.php', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
           body: JSON.stringify({ prompt, context })
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const message = data.error || `Erro HTTP ${res.status}`;
+          throw new Error(message);
+        }
         const input = btn.closest('.input-group').querySelector('input,textarea');
         if (data.suggestion) input.value = data.suggestion;
       } catch (e) {
