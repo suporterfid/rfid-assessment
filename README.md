@@ -6,6 +6,7 @@ RFID Sorter Assessment is a single-file PHP application backed by SQLite that he
 - **Survey management** – Create and edit structured sorter survey responses that are grouped by configurable sections and questions.
 - **Reporting** – Filter saved responses by client, site, or date range to generate printable tables for audits.
 - **Authentication** – Password-protected access with session-based login/logout and seeded admin credentials.
+- **User management** – Admins can create, edit, rotate API tokens, and remove users through the web interface.
 - **File attachments** – Upload photos, diagrams, or PDFs for each response; files are stored in `uploads/` with metadata tracked in the database.
 - **REST API** – `/api/responses` endpoint returns responses or an individual response with all values for system integrations.
 - **AI suggestions** – Authenticated users can request contextual answer suggestions from OpenAI directly inside forms via `ai.php`.
@@ -26,6 +27,7 @@ RFID Sorter Assessment is a single-file PHP application backed by SQLite that he
 4. **Log in** using the seeded credentials:
    - Username: `admin`
    - Password: `admin`
+5. **Manage users** via the **“Usuários”** link in the top menu to add accounts, reset API tokens, or update passwords.
 
 ### Accessing the Response Form
 Once you are authenticated, the navigation bar at the top of the interface reveals the survey tooling:
@@ -48,12 +50,7 @@ The REST API shares the same base URL as the web app and requires a valid API to
 - **List responses:** `GET /api/responses?token=YOUR_TOKEN`
 - **Fetch a response:** `GET /api/responses/{id}?token=YOUR_TOKEN`
 
-Tokens are stored in the `users` table (`api_token` column). Retrieve one by opening the database with the SQLite CLI:
-```bash
-sqlite3 data.db "SELECT api_token FROM users WHERE username = 'admin';"
-```
-
-The API returns JSON payloads using UTF-8 encoding and HTTP 401 when the token is invalid.
+Tokens are stored in the `users` table (`api_token` column) and are visible on the **Usuários** page, where you can also generate fresh tokens with a single click. The API returns JSON payloads using UTF-8 encoding and HTTP 401 when the token is invalid.
 
 ## OpenAI Suggestions
 The `ai.php` endpoint enhances forms with AI-generated answer suggestions. To enable it:

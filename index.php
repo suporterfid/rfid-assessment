@@ -129,6 +129,13 @@ function seedSurvey(PDO $pdo): void {
 function h(?string $s): string { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function nowIso(): string { return (new DateTime('now'))->format('c'); }
 function redirect(string $to): never { header("Location: $to"); exit; }
+function setFlash(string $message): void { $_SESSION['flash'] = $message; }
+function popFlash(): ?string {
+    if (!isset($_SESSION['flash'])) return null;
+    $msg = $_SESSION['flash'];
+    unset($_SESSION['flash']);
+    return $msg;
+}
 
 // ---------- Auth ----------
 function currentUser(): ?array {
@@ -226,6 +233,88 @@ function page_reports(PDO $pdo): void {
     <?php layout(ob_get_clean(),"Relatórios – ".APP_TITLE);
 }
 
+function page_users(PDO $pdo): void {
+    requireLogin();
+    $flash = popFlash();
+    $users = $pdo->query("SELECT id, username, api_token FROM users ORDER BY username")
+        ->fetchAll(PDO::FETCH_ASSOC);
+    $current = currentUser();
+
+    ob_start(); ?>
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h1 class="h4 mb-0">Usuários</h1>
+      <a class="btn btn-primary" href="?action=new_user">Novo usuário</a>
+    </div>
+    <?php if($flash): ?>
+      <div class="alert alert-success"><?=h($flash)?></div>
+    <?php endif; ?>
+    <div class="bg-white p-3 rounded shadow-sm">
+      <table class="table table-striped align-middle">
+        <thead><tr><th>Usuário</th><th>Token da API</th><th class="text-end">Ações</th></tr></thead>
+        <tbody>
+        <?php foreach($users as $user): ?>
+          <tr>
+            <td><?=h($user['username'])?></td>
+            <td><code><?=h($user['api_token'])?></code></td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-outline-secondary" href="?action=edit_user&amp;id=<?=$user['id']?>">Editar</a>
+              <form method="post" action="?action=regen_user_token" class="d-inline">
+                <input type="hidden" name="id" value="<?=$user['id']?>">
+                <button class="btn btn-sm btn-outline-secondary" onclick="return confirm('Gerar um novo token para este usuário?');">Novo token</button>
+              </form>
+              <?php if($current && (int)$current['id'] === (int)$user['id']): ?>
+                <button class="btn btn-sm btn-outline-danger" disabled title="Não é possível excluir o próprio usuário">Excluir</button>
+              <?php else: ?>
+                <form method="post" action="?action=delete_user" class="d-inline" onsubmit="return confirm('Excluir usuário <?=h($user['username'])?>?');">
+                  <input type="hidden" name="id" value="<?=$user['id']?>">
+                  <button class="btn btn-sm btn-outline-danger">Excluir</button>
+                </form>
+              <?php endif; ?>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+    <?php layout(ob_get_clean(), "Usuários – ".APP_TITLE); }
+
+function page_user_form(PDO $pdo, ?array $user = null, string $error = '', array $old = []): void {
+    requireLogin();
+    $isEdit = $user !== null;
+    $title = $isEdit ? 'Editar usuário' : 'Novo usuário';
+    $username = $old['username'] ?? ($user['username'] ?? '');
+
+    ob_start(); ?>
+    <div class="bg-white p-4 rounded shadow-sm" style="max-width:500px;margin:auto;">
+      <h1 class="h4 mb-3"><?=h($title)?></h1>
+      <?php if($error): ?><div class="alert alert-danger"><?=h($error)?></div><?php endif; ?>
+      <form method="post" action="?action=<?=$isEdit ? 'edit_user&amp;id='.$user['id'] : 'new_user'?>">
+        <div class="mb-3">
+          <label class="form-label">Usuário</label>
+          <input class="form-control" name="username" value="<?=h($username)?>" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Senha <?=$isEdit ? '<small class="text-muted">(deixe em branco para manter)</small>' : ''?></label>
+          <input type="password" class="form-control" name="password" <?=$isEdit ? '' : 'required'?>>
+        </div>
+        <?php if($isEdit): ?>
+          <div class="mb-3">
+            <label class="form-label">Token atual da API</label>
+            <div class="input-group">
+              <input class="form-control" value="<?=h($user['api_token'])?>" readonly>
+              <button class="btn btn-outline-secondary" name="regen_token" value="1">Gerar novo token</button>
+            </div>
+            <small class="text-muted">Salvará alterações e atribuirá um novo token imediatamente.</small>
+          </div>
+        <?php endif; ?>
+        <div class="d-flex justify-content-between">
+          <a class="btn btn-link" href="?action=users">Cancelar</a>
+          <button class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+    <?php layout(ob_get_clean(), $title." – ".APP_TITLE); }
+
 // ---------- Layout ----------
 function layout(string $content,string $title=APP_TITLE):void{
     $u=currentUser();
@@ -236,7 +325,7 @@ function layout(string $content,string $title=APP_TITLE):void{
       <div class='navbar-nav'>
         <a class='nav-link' href='?action=list_responses'>Respostas</a>
         <a class='nav-link' href='?action=reports'>Relatórios</a>";
-    if($u){ echo "<a class='nav-link' href='?action=logout'>Logout (".h($u['username']).")</a>"; }
+    if($u){ echo "<a class='nav-link' href='?action=users'>Usuários</a>"; echo "<a class='nav-link' href='?action=logout'>Logout (".h($u['username']).")</a>"; }
     else { echo "<a class='nav-link' href='?action=login'>Login</a>"; }
     echo "</div></div></nav><main class='container py-4'>{$content}</main>
     <script>
@@ -298,5 +387,100 @@ if($action==='login' && $_SERVER['REQUEST_METHOD']==='POST'){
 }
 elseif($action==='login'){ page_login(); }
 elseif($action==='logout'){ session_destroy(); redirect("?"); }
+elseif($action==='users'){ page_users($pdo); }
+elseif($action==='new_user'){
+    requireLogin();
+    if($_SERVER['REQUEST_METHOD']==='POST'){
+        $username=trim($_POST['username']??'');
+        $password=$_POST['password']??'';
+        if($username==='' || $password===''){
+            page_user_form($pdo,null,'Usuário e senha são obrigatórios.', ['username'=>$username]);
+        } else {
+            $hash=password_hash($password,PASSWORD_BCRYPT);
+            $token=bin2hex(random_bytes(16));
+            try{
+                $pdo->prepare("INSERT INTO users (username,password_hash,api_token) VALUES (?,?,?)")
+                    ->execute([$username,$hash,$token]);
+            }catch(PDOException $e){
+                if($e->getCode()==='23000'){
+                    page_user_form($pdo,null,'Nome de usuário já está em uso.', ['username'=>$username]);
+                } else {
+                    throw $e;
+                }
+                return;
+            }
+            setFlash('Usuário criado com sucesso.');
+            redirect('?action=users');
+        }
+    } else {
+        page_user_form($pdo);
+    }
+}
+elseif($action==='edit_user'){
+    requireLogin();
+    $id=(int)($_GET['id'] ?? $_POST['id'] ?? 0);
+    $st=$pdo->prepare("SELECT * FROM users WHERE id=?");
+    $st->execute([$id]);
+    $user=$st->fetch(PDO::FETCH_ASSOC);
+    if(!$user){
+        setFlash('Usuário não encontrado.');
+        redirect('?action=users');
+    }
+    if($_SERVER['REQUEST_METHOD']==='POST'){
+        $username=trim($_POST['username']??'');
+        $password=$_POST['password']??'';
+        $regen=isset($_POST['regen_token']);
+        if($username===''){
+            page_user_form($pdo,$user,'O campo usuário é obrigatório.', ['username'=>$username]);
+            return;
+        }
+        $params=[$username];
+        $sql="UPDATE users SET username=?";
+        if($password!==''){
+            $sql.=', password_hash=?';
+            $params[]=password_hash($password,PASSWORD_BCRYPT);
+        }
+        if($regen){
+            $sql.=', api_token=?';
+            $params[]=bin2hex(random_bytes(16));
+        }
+        $sql.=' WHERE id=?';
+        $params[]=$id;
+        try{
+            $pdo->prepare($sql)->execute($params);
+        }catch(PDOException $e){
+            if($e->getCode()==='23000'){
+                page_user_form($pdo,$user,'Nome de usuário já está em uso.', ['username'=>$username]);
+            } else {
+                throw $e;
+            }
+            return;
+        }
+        setFlash('Usuário atualizado com sucesso.');
+        redirect('?action=users');
+    } else {
+        page_user_form($pdo,$user);
+    }
+}
+elseif($action==='delete_user' && $_SERVER['REQUEST_METHOD']==='POST'){
+    requireLogin();
+    $id=(int)$_POST['id'];
+    $current=currentUser();
+    if($current && (int)$current['id']===$id){
+        setFlash('Não é possível excluir o próprio usuário.');
+    } else {
+        $pdo->prepare("DELETE FROM users WHERE id=?")->execute([$id]);
+        setFlash('Usuário excluído.');
+    }
+    redirect('?action=users');
+}
+elseif($action==='regen_user_token' && $_SERVER['REQUEST_METHOD']==='POST'){
+    requireLogin();
+    $id=(int)$_POST['id'];
+    $token=bin2hex(random_bytes(16));
+    $pdo->prepare("UPDATE users SET api_token=? WHERE id=?")->execute([$token,$id]);
+    setFlash('Novo token gerado com sucesso.');
+    redirect('?action=users');
+}
 elseif($action==='reports'){ page_reports($pdo); }
 else { page_home(); }
