@@ -114,6 +114,9 @@ function migrate(PDO $pdo): void {
     if ($hasSec === 0) {
         seedSurvey($pdo);
     }
+
+    // Garantir que o campo de layout utilize textarea mesmo em bancos antigos
+    $pdo->exec("UPDATE questions SET type='textarea' WHERE key_name='layout_tipo' AND type != 'textarea'");
 }
 
 // ---------- Seed Survey ----------
@@ -132,7 +135,7 @@ function seedSurvey(PDO $pdo): void {
         $stmtSec->execute([$name, $order]);
         $secIds[$name] = $pdo->lastInsertId();
     }
-    $stmtQ->execute([$secIds['Informações Fundamentais – Físico & Layout'], 'layout_tipo', 'Layout geral', 'text', null, 0, 0]);
+    $stmtQ->execute([$secIds['Informações Fundamentais – Físico & Layout'], 'layout_tipo', 'Layout geral', 'textarea', null, 0, 0]);
     $stmtQ->execute([$secIds['Produtos & Embalagens'], 'peso_medio', 'Peso médio (kg)', 'number', null, 0, 0]);
 
     $pdo->commit();
@@ -377,9 +380,10 @@ function page_response_form(PDO $pdo, ?array $response = null, array $old = [], 
                     $inputName = "q[".$field."]";
                     $attrs = $required ? ' required' : '';
                     if ($type === 'textarea') {
+                        $rows = $question['key_name'] === 'layout_tipo' ? 10 : 3;
                         ?>
                         <div class="input-group">
-                          <textarea class="form-control" name="<?=$inputName?>" rows="3"<?=$attrs?>><?=h($value)?></textarea>
+                          <textarea class="form-control" name="<?=$inputName?>" rows="<?=$rows?>" style="overflow:auto;"<?=$attrs?>><?=h($value)?></textarea>
                           <button type="button" class="btn btn-outline-secondary" onclick="fetchAiSuggestion('<?=h($question['label'])?>', this)">Sugerir IA</button>
                         </div>
                         <?php
