@@ -146,6 +146,15 @@ function currentUser(): ?array {
 function requireLogin(): void {
     if (!currentUser()) redirect("?action=login");
 }
+function guestEmail(): ?string {
+    return isset($_SESSION['guest_email']) ? (string)$_SESSION['guest_email'] : null;
+}
+function grantGuestAccess(string $email): void {
+    $_SESSION['guest_email'] = $email;
+}
+function revokeGuestAccess(): void {
+    unset($_SESSION['guest_email']);
+}
 
 // ---------- Routing ----------
 $action = $_GET['action'] ?? 'home';
@@ -378,6 +387,31 @@ function page_login(string $error=''):void{ ob_start(); ?>
   </div>
 <?php layout(ob_get_clean(),"Login"); }
 
+function page_guest_access(string $error = '', string $email = ''): void { ob_start(); ?>
+  <div class="bg-white p-4 rounded shadow-sm" style="max-width:420px;margin:auto;">
+    <h1 class="h4 mb-3">Acesso como convidado</h1>
+    <p class="text-muted">Informe seu e-mail para acessar o questionário como convidado.</p>
+    <form method="post" action="?action=guest_access" novalidate>
+      <div class="mb-3">
+        <label class="form-label" for="guest-email">E-mail</label>
+        <input
+          type="email"
+          id="guest-email"
+          name="email"
+          class="form-control<?=$error ? ' is-invalid' : ''?>"
+          value="<?=h($email)?>"
+          required
+        >
+        <?php if($error): ?><div class="invalid-feedback d-block"><?=h($error)?></div><?php endif; ?>
+      </div>
+      <div class="d-flex justify-content-between align-items-center">
+        <a class="btn btn-link" href="?">Cancelar</a>
+        <button class="btn btn-primary">Continuar</button>
+      </div>
+    </form>
+  </div>
+<?php layout(ob_get_clean(),"Acesso de convidado – ".APP_TITLE); }
+
 // ---------- Dispatch ----------
 if($action==='login' && $_SERVER['REQUEST_METHOD']==='POST'){
     $u=$_POST['username']; $p=$_POST['password'];
@@ -387,6 +421,25 @@ if($action==='login' && $_SERVER['REQUEST_METHOD']==='POST'){
 }
 elseif($action==='login'){ page_login(); }
 elseif($action==='logout'){ session_destroy(); redirect("?"); }
+elseif($action==='guest_access'){
+    if($_SERVER['REQUEST_METHOD']==='POST'){
+        $email=trim($_POST['email']??'');
+        if($email===''){
+            page_guest_access('Informe um e-mail.', $email);
+        } elseif(!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            page_guest_access('E-mail inválido. Verifique e tente novamente.', $email);
+        } else {
+            grantGuestAccess($email);
+            redirect('?action=list_responses');
+        }
+    } else {
+        page_guest_access('', guestEmail() ?? '');
+    }
+}
+elseif($action==='guest_logout'){
+    revokeGuestAccess();
+    redirect('?');
+}
 elseif($action==='users'){ page_users($pdo); }
 elseif($action==='new_user'){
     requireLogin();
