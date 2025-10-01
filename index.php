@@ -146,6 +146,12 @@ function currentUser(): ?array {
 function requireLogin(): void {
     if (!currentUser()) redirect("?action=login");
 }
+function requireSurveyAccess(): void {
+    if (currentUser() || guestEmail()) {
+        return;
+    }
+    redirect('?action=guest_access');
+}
 function guestEmail(): ?string {
     return isset($_SESSION['guest_email']) ? (string)$_SESSION['guest_email'] : null;
 }
@@ -196,7 +202,7 @@ function getResponseValues(PDO $pdo, int $id): array {
 
 // ---------- Upload ----------
 if ($action==='upload_attachment' && $_SERVER['REQUEST_METHOD']==='POST') {
-    requireLogin();
+    requireSurveyAccess();
     $rid=(int)$_POST['response_id'];
     if (!empty($_FILES['file']['name'])) {
         $dir=__DIR__.'/uploads'; if (!is_dir($dir)) mkdir($dir,0777,true);
@@ -210,7 +216,7 @@ if ($action==='upload_attachment' && $_SERVER['REQUEST_METHOD']==='POST') {
 
 // ---------- Relatórios ----------
 function page_reports(PDO $pdo): void {
-    requireLogin();
+    requireSurveyAccess();
     $client=$_GET['client']??''; $site=$_GET['site']??''; $from=$_GET['from']??''; $to=$_GET['to']??'';
     $sql="SELECT * FROM responses WHERE 1=1"; $p=[];
     if($client){$sql.=" AND client_name LIKE ?";$p[]="%$client%";}
@@ -327,15 +333,27 @@ function page_user_form(PDO $pdo, ?array $user = null, string $error = '', array
 // ---------- Layout ----------
 function layout(string $content,string $title=APP_TITLE):void{
     $u=currentUser();
+    $guest=guestEmail();
     echo "<!doctype html><html><head><meta charset='utf-8'><title>".h($title)."</title>
     <link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'></head><body>
     <nav class='navbar navbar-dark bg-dark navbar-expand'><div class='container'>
       <a class='navbar-brand' href='?'>".APP_TITLE."</a>
-      <div class='navbar-nav'>
-        <a class='nav-link' href='?action=list_responses'>Respostas</a>
-        <a class='nav-link' href='?action=reports'>Relatórios</a>";
-    if($u){ echo "<a class='nav-link' href='?action=users'>Usuários</a>"; echo "<a class='nav-link' href='?action=logout'>Logout (".h($u['username']).")</a>"; }
-    else { echo "<a class='nav-link' href='?action=login'>Login</a>"; }
+      <div class='navbar-nav'>";
+    if($u || $guest){
+        echo "<a class='nav-link' href='?action=list_responses'>Respostas</a>";
+        echo "<a class='nav-link' href='?action=reports'>Relatórios</a>";
+    } else {
+        echo "<a class='nav-link' href='?action=guest_access'>Responder levantamento</a>";
+    }
+    if($u){
+        echo "<a class='nav-link' href='?action=users'>Usuários</a>";
+        echo "<a class='nav-link' href='?action=logout'>Logout (".h($u['username']).")</a>";
+    } elseif($guest){
+        echo "<span class='navbar-text text-light small ms-3'>Convidado: ".h($guest)."</span>";
+        echo "<a class='nav-link' href='?action=guest_logout'>Sair</a>";
+    } else {
+        echo "<a class='nav-link' href='?action=login'>Login</a>";
+    }
     echo "</div></div></nav><main class='container py-4'>{$content}</main>
     <script>
     async function fetchAiSuggestion(prompt, btn){
