@@ -16,6 +16,8 @@ error_reporting(E_ALL);
 
 session_start();
 
+$apiKey = ini_get("openai_api_key");
+
 if (!function_exists('str_starts_with')) {
     function str_starts_with(string $haystack, string $needle): bool
     {
