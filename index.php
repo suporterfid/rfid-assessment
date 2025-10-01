@@ -122,10 +122,20 @@ function migrate(PDO $pdo): void {
 // ---------- Seed Survey ----------
 function seedSurvey(PDO $pdo): void {
     $sections = [
-        ['Informações Fundamentais – Físico & Layout', 10],
+        ['Características Físicas e Layout', 10],
         ['Produtos & Embalagens', 20],
-        ['Sistema de Controle & Automação', 30]
+        ['Sistema de Controle & Automação', 30],
+        ['Sistemas de Identificação Atuais', 40],
+        ['Infraestrutura Elétrica e de Comunicação', 50],
+        ['Integração com Sistemas Corporativos', 60],
+        ['Portal de Indução – Reforço ao Código de Barras', 70],
+        ['Portais de Saída – Identificação de Dispensação', 80],
+        ['Portal de Paletização – Verificação Final', 90],
+        ['Perguntas Críticas em Visita Técnica', 100],
+        ['Documentos a Solicitar', 110],
+        ['Site Survey e Análise RF', 120]
     ];
+
     $pdo->beginTransaction();
     $stmtSec = $pdo->prepare("INSERT INTO sections (name, sort_order) VALUES (?, ?)");
     $stmtQ = $pdo->prepare("INSERT INTO questions (section_id, key_name, label, type, options, required, sort_order) VALUES (?,?,?,?,?,?,?)");
@@ -135,11 +145,168 @@ function seedSurvey(PDO $pdo): void {
         $stmtSec->execute([$name, $order]);
         $secIds[$name] = $pdo->lastInsertId();
     }
-    $stmtQ->execute([$secIds['Informações Fundamentais – Físico & Layout'], 'layout_tipo', 'Layout geral', 'textarea', null, 0, 0]);
-    $stmtQ->execute([$secIds['Produtos & Embalagens'], 'peso_medio', 'Peso médio (kg)', 'number', null, 0, 0]);
+
+    // --- Características Físicas e Layout
+    $sid = $secIds['Características Físicas e Layout'];
+    $stmtQ->execute([$sid, 'comprimento_total', 'Comprimento total do sorter e seções individuais', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'largura_esteiras', 'Largura das esteiras e espaçamentos entre elas', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'altura_esteiras', 'Altura das esteiras em relação ao piso', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'layout_geral', 'Layout geral (linear, circular, em L ou outras configurações)', 'select', 'linear,circular,L,complexo', 0, 0]);
+    $stmtQ->execute([$sid, 'pontos_inducao', 'Pontos de entrada (indução) e número de saídas', 'text', null, 0, 0]);
+    $stmtQ->execute([$sid, 'areas_paletizacao', 'Áreas de paletização e estações de trabalho adjacentes', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'velocidade_operacional', 'Velocidade operacional das esteiras (m/min)', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'variacoes_velocidade', 'Variações de velocidade (picos vs normal)', 'text', null, 0, 0]);
+    $stmtQ->execute([$sid, 'throughput_max', 'Capacidade máxima de throughput (itens/hora)', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'gap_produtos', 'Gaps típicos entre produtos na esteira', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'materiais_construtivos', 'Materiais construtivos', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'estruturas_metais', 'Estruturas metálicas que possam causar interferência RF', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'condicoes_ambiente', 'Condições ambientais (temperatura, umidade, vibração)', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'ruido_eletromag', 'Nível de ruído eletromagnético presente', 'text', null, 0, 0]);
+
+    // --- Produtos & Embalagens
+    $sid = $secIds['Produtos & Embalagens'];
+    $stmtQ->execute([$sid, 'dimensoes_produtos', 'Dimensões típicas (C x L x A)', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'variacao_tamanhos', 'Variação de tamanhos (menores e maiores)', 'text', null, 0, 0]);
+    $stmtQ->execute([$sid, 'peso_medio', 'Peso médio e variações', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'materiais_embalagens', 'Tipos de materiais das embalagens', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'embalagens_papel_plastico_metal', 'Embalagens de papelão, plástico, metal', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'produtos_liquidos', 'Presença de líquidos ou alto teor de água', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'embalagens_reflexivas', 'Embalagens reflexivas ou metalizadas', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'produtos_empilhados', 'Produtos empilhados/múltiplas camadas', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'num_produtos_simultaneos', 'Número típico de produtos simultâneos na esteira', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'espacamento_minimo', 'Espaçamento mínimo entre produtos consecutivos', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'padrao_agrupamento', 'Padrões de agrupamento (individuais vs lotes)', 'text', null, 0, 0]);
+    $stmtQ->execute([$sid, 'variacao_densidade', 'Variações de densidade em picos', 'text', null, 0, 0]);
+
+    // --- Sistema de Controle & Automação
+    $sid = $secIds['Sistema de Controle & Automação'];
+    $stmtQ->execute([$sid, 'plc_modelo', 'Marca e modelo do PLC principal', 'text', null, 0, 0]);
+    $stmtQ->execute([$sid, 'protocolos_comunicacao', 'Protocolos de comunicação utilizados', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'scada_existente', 'Sistema SCADA ou interface existente', 'text', null, 0, 0]);
+    $stmtQ->execute([$sid, 'logica_roteamento', 'Lógica atual de roteamento', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'sensores_fotocelulas', 'Fotocélulas para detecção de presença', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'sensores_peso', 'Sensores de peso em estações', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'encoders', 'Encoders para controle de velocidade', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'visao_artificial', 'Sistemas de visão artificial integrados', 'boolean', null, 0, 0]);
+
+    // --- Sistemas de Identificação Atuais
+    $sid = $secIds['Sistemas de Identificação Atuais'];
+    $stmtQ->execute([$sid, 'localizacao_scanners', 'Localização e quantidade de scanners instalados', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'marcas_modelos_scanners', 'Marcas/modelos e especificações técnicas', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'taxa_leitura_atual', 'Taxa de leitura atual e limitações', 'text', null, 0, 0]);
+    $stmtQ->execute([$sid, 'pontos_problema', 'Pontos problemáticos com baixa taxa de leitura', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'percentual_identificacao', 'Percentual de produtos identificados corretamente', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'intervencoes_manuais', 'Necessidade de intervenções manuais', 'text', null, 0, 0]);
+    $stmtQ->execute([$sid, 'causas_falha', 'Principais causas de falhas de leitura', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'impacto_throughput', 'Impacto no throughput do sistema', 'textarea', null, 0, 0]);
+
+    // --- Infraestrutura Elétrica e de Comunicação
+    $sid = $secIds['Infraestrutura Elétrica e de Comunicação'];
+    $stmtQ->execute([$sid, 'tensoes_disponiveis', 'Tensões disponíveis', 'text', null, 0, 0]);
+    $stmtQ->execute([$sid, 'capacidade_corrente', 'Capacidade de corrente disponível', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'localizacao_paineis', 'Localização de painéis elétricos e pontos de alimentação', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'sistemas_protecao', 'Sistemas de proteção existentes', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'infra_ethernet', 'Infraestrutura Ethernet disponível e localização de switches', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'largura_banda', 'Largura de banda disponível para RFID', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'protocolos_rede', 'Protocolos de rede suportados', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'seguranca_rede', 'Segurança de rede e políticas de acesso', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'pontos_fixacao', 'Pontos de fixação estrutural para portais RFID', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'acessibilidade_instalacao', 'Acessibilidade para instalação/manutenção', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'restricoes_altura', 'Restrições de altura/largura para montagem', 'text', null, 0, 0]);
+    $stmtQ->execute([$sid, 'interferencias_estruturas', 'Interferências com estruturas existentes', 'textarea', null, 0, 0]);
+
+    // --- Integração com Sistemas Corporativos
+    $sid = $secIds['Integração com Sistemas Corporativos'];
+    $stmtQ->execute([$sid, 'wms_sistema', 'Sistema WMS/ERP utilizado e versão', 'text', null, 0, 0]);
+    $stmtQ->execute([$sid, 'modulos_implementados', 'Módulos implementados', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'apis_disponiveis', 'APIs disponíveis para integração', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'freq_atualizacoes', 'Frequência de atualizações necessárias', 'text', null, 0, 0]);
+    $stmtQ->execute([$sid, 'estrutura_dados', 'Estrutura de dados de produtos', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'codigos_identificacao', 'Códigos de identificação (EAN, UPC, internos)', 'text', null, 0, 0]);
+    $stmtQ->execute([$sid, 'rastreabilidade_lote', 'Necessidade de rastreabilidade por lote/série', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'requisitos_auditoria', 'Requisitos de auditoria/compliance', 'textarea', null, 0, 0]);
+
+    // --- Portal de Indução
+    $sid = $secIds['Portal de Indução – Reforço ao Código de Barras'];
+    $stmtQ->execute([$sid, 'falhas_scanner', 'Taxa de falha atual dos scanners', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'tempo_disponivel_leitura', 'Tempo disponível para leitura durante passagem', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'orientacoes_produtos', 'Necessidade de leitura em múltiplas orientações', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'protocolo_falhas', 'Protocolo de tratamento em caso de falha simultânea', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'logica_decisao', 'Lógica de decisão (backup ou simultânea)', 'text', null, 0, 0]);
+    $stmtQ->execute([$sid, 'tempo_resposta', 'Tempo de resposta necessário', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'necessidade_logging', 'Necessidade de logging para auditoria', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'interface_excecoes', 'Interface com sistema de exceções', 'textarea', null, 0, 0]);
+
+    // --- Portais de Saída
+    $sid = $secIds['Portais de Saída – Identificação de Dispensação'];
+    $stmtQ->execute([$sid, 'num_saidas', 'Número total de saídas/destinos', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'id_saida', 'Identificação única de cada saída', 'text', null, 0, 0]);
+    $stmtQ->execute([$sid, 'criterios_roteamento', 'Critérios de roteamento atuais', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'volume_por_saida', 'Volume de produtos por saída', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'timestamp_dispensacao', 'Necessidade de timestamp por dispensação', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'agrupamento_destino', 'Agrupamento por destino/rota', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'relatorios_automaticos', 'Relatórios automáticos por período', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'integracao_expedicao', 'Integração com sistemas de expedição', 'boolean', null, 0, 0]);
+
+    // --- Portal de Paletização
+    $sid = $secIds['Portal de Paletização – Verificação Final'];
+    $stmtQ->execute([$sid, 'dimensoes_pallets', 'Dimensões padrão de pallets', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'altura_max_pallet', 'Altura máxima de empilhamento', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'tempo_medio_pallet', 'Tempo médio para formar pallet', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'criterios_completude', 'Critérios de completude', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'comparacao_pedidos', 'Comparação com pedidos originais', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'tolerancias', 'Tolerâncias aceitáveis', 'text', null, 0, 0]);
+    $stmtQ->execute([$sid, 'tratamento_excecoes', 'Processo de tratamento de exceções', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'requisitos_regulatorios', 'Requisitos regulatórios/compliance', 'textarea', null, 0, 0]);
+
+    // --- Perguntas Críticas em Visita Técnica
+    $sid = $secIds['Perguntas Críticas em Visita Técnica'];
+    $stmtQ->execute([$sid, 'velocidade_max_esteiras', 'Qual a velocidade máxima das esteiras e existe variação durante o dia?', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'produtos_simultaneos_inducao', 'Quantos produtos passam simultaneamente pela indução?', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'gap_min_produtos', 'Qual o gap mínimo entre produtos consecutivos?', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'pontos_acumulo', 'Existem pontos de acúmulo ou filas?', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'taxa_leitura_codigos', 'Qual a taxa de leitura atual dos códigos de barras em cada ponto?', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'motivos_falha', 'Quais os principais motivos de falha na identificação?', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'tratamento_nao_identificados', 'Como o sistema atual trata produtos não identificados?', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'redundancia_identificacao', 'Existe redundância ou backup para falhas de identificação?', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'localizacao_paineis_visita', 'Onde estão localizados os painéis elétricos mais próximos?', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'infra_rede_area', 'Qual a infraestrutura de rede disponível em cada área?', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'restricoes_estrutura', 'Existem restrições para perfuração/soldas na estrutura?', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'interferencias_rf', 'Há interferências RF conhecidas no ambiente?', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'dados_wms', 'Como os dados de identificação são enviados ao WMS atualmente?', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'tempo_resposta_roteamento', 'Qual o tempo de resposta necessário para decisões de roteamento?', 'number', null, 0, 0]);
+    $stmtQ->execute([$sid, 'relatorios_necessarios', 'Existem relatórios específicos que precisam ser mantidos?', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'requisitos_auditoria_visita', 'Há requisitos de auditoria ou compliance específicos?', 'boolean', null, 0, 0]);
+
+    // --- Documentos a Solicitar
+    $sid = $secIds['Documentos a Solicitar'];
+    $stmtQ->execute([$sid, 'diagramas_eletricos', 'Diagramas elétricos e de controle', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'layout_detalhado', 'Layout detalhado com dimensões', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'manual_tecnico', 'Manual técnico do sistema de controle', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'especificacoes_scanners', 'Especificações dos scanners atuais', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'relatorios_performance', 'Relatórios de performance atual', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'estatisticas_throughput', 'Estatísticas de throughput por período', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'registros_manutencao', 'Registros de manutenção e falhas', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'procedimentos_operacionais', 'Procedimentos operacionais padrão', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'documentacao_wms', 'Documentação do WMS/ERP', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'apis_protocolos', 'APIs e protocolos de integração', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'estrutura_banco_dados', 'Estrutura de banco de dados relevante', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'politicas_seguranca_ti', 'Políticas de segurança de TI', 'boolean', null, 0, 0]);
+
+    // --- Site Survey e Análise RF
+    $sid = $secIds['Site Survey e Análise RF'];
+    $stmtQ->execute([$sid, 'frequencias_utilizadas', 'Frequências utilizadas (902–928 MHz)', 'text', null, 0, 0]);
+    $stmtQ->execute([$sid, 'fontes_interferencia', 'Fontes de interferência RF', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'medicao_ruido', 'Medição de ruído em diferentes horários', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'teste_propagacao', 'Teste de propagação nas áreas', 'textarea', null, 0, 0]);
+    $stmtQ->execute([$sid, 'piloto_tags', 'Piloto com tags representativas', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'taxa_leitura_piloto', 'Verificação da taxa de leitura em posições diferentes', 'text', null, 0, 0]);
+    $stmtQ->execute([$sid, 'interferencia_multiplos_leitores', 'Interferência entre múltiplos leitores', 'boolean', null, 0, 0]);
+    $stmtQ->execute([$sid, 'range_leitura', 'Validação do range de leitura', 'text', null, 0, 0]);
 
     $pdo->commit();
 }
+
 
 // ---------- Helpers ----------
 function h(?string $s): string { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
