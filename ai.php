@@ -4,7 +4,9 @@
 header('Content-Type: application/json; charset=utf-8');
 
 session_start();
-if (!isset($_SESSION['uid'])) {
+$hasUser = isset($_SESSION['uid']);
+$hasGuest = isset($_SESSION['guest_email']);
+if (!$hasUser && !$hasGuest) {
     http_response_code(401);
     echo json_encode(['error' => 'Não autenticado']);
     exit;
@@ -20,6 +22,15 @@ if (!$prompt) {
 }
 
 $apiKey = getenv("OPENAI_API_KEY");
+if (!$apiKey) {
+    $apiKey = ini_get('openai_api_key');
+}
+if (!$apiKey) {
+    $apiKey = $_ENV['OPENAI_API_KEY'] ?? $_SERVER['OPENAI_API_KEY'] ?? null;
+}
+if (is_string($apiKey)) {
+    $apiKey = trim($apiKey);
+}
 if (!$apiKey) {
     http_response_code(500);
     echo json_encode(['error' => 'OPENAI_API_KEY não definido']);
