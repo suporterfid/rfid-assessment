@@ -16,6 +16,13 @@ error_reporting(E_ALL);
 
 session_start();
 
+if (!function_exists('str_starts_with')) {
+    function str_starts_with(string $haystack, string $needle): bool
+    {
+        return $needle === '' || strncmp($haystack, $needle, strlen($needle)) === 0;
+    }
+}
+
 const DB_FILE = __DIR__ . '/data.db';
 const APP_TITLE = 'RFID Sorter Assessment';
 const ENABLE_QUESTION_ADMIN = true;
